@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>20年複利與獲利提領動態試算表 - 蒙地卡羅常態分佈儀表板</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f8fafc;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(226, 232, 240, 0.8);
+        }
+    </style>
+</head>
+<body class="text-slate-800 min-h-screen pb-12">
+
+    <!-- Top Navigation Bar -->
+    <header class="sticky top-0 z-30 bg-slate-900 text-white shadow-md border-b border-slate-800">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="p-2 bg-emerald-500/20 text-emerald-400 rounded-lg">
+                    <i data-lucide="line-chart" class="w-6 h-6"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight">20年複利與獲利提領試算表</h1>
+                    <p class="text-xs text-slate-400">蒙地卡羅常態分佈隨機模擬 (StdDev 80%)</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <!-- Mode Toggle -->
+                <div class="bg-slate-800 p-1 rounded-lg border border-slate-700 flex items-center text-xs">
+                    <button id="modeMonteCarloBtn" onclick="setMode('monteCarlo')" class="px-3 py-1.5 rounded-md font-medium transition-all bg-emerald-500 text-white shadow">
+                        🎲 蒙地卡羅隨機
+                    </button>
+                    <button id="modeFixedBtn" onclick="setMode('fixed')" class="px-3 py-1.5 rounded-md font-medium transition-all text-slate-400 hover:text-white">
+                        📐 固定年報酬率
+                    </button>
+                </div>
+
+                <!-- One-click Resimulate Button -->
+                <button onclick="resimulate()" class="flex items-center space-x-1.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white px-4 py-2 rounded-lg font-semibold shadow-lg shadow-emerald-500/20 transition-all transform active:scale-95 text-sm">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    <span>重新模擬年報酬率</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
+
+        <!-- Banner / Notification Bar if in Fixed Mode -->
+        <div id="modeBanner" class="hidden bg-amber-50 border border-amber-200 text-amber-800 px-4 py-2.5 rounded-xl text-sm flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <i data-lucide="info" class="w-4 h-4 text-amber-600"></i>
+                <span>目前為<strong>「固定平均報酬率模式 (標準差 0%)」</strong>。切換回「蒙地卡羅隨機」可感受市場波動與極端行情風險。</span>
+            </div>
+            <button onclick="setMode('monteCarlo')" class="text-xs bg-amber-600 text-white px-2.5 py-1 rounded font-medium hover:bg-amber-700">切換為隨機模式</button>
+        </div>
+
+        <!-- 1. Parameter Input Control Panel -->
+        <section class="glass-card rounded-2xl p-5 shadow-sm border border-slate-200/80">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                <h2 class="text-base font-bold text-slate-800 flex items-center space-x-2">
+                    <i data-lucide="sliders" class="w-5 h-5 text-emerald-600"></i>
+                    <span>核心投資與提領參數設定</span>
+                </h2>
+                <span class="text-xs text-slate-500">調整滑桿或點擊快捷鍵，即時計算結果</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+
+                <!-- 1. 起始本金 -->
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center text-sm font-semibold text-slate-700">
+                        <label for="initialPrincipal">起始本金 (萬元)</label>
+                        <input type="number" id="initialPrincipalNum" min="10" max="500" value="50" class="w-24 text-right px-2 py-1 border border-slate-300 rounded-md focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-900 font-bold" onchange="updateParam('initialPrincipal', this.value)">
+                    </div>
+                    <input type="range" id="initialPrincipal" min="10" max="500" step="1" value="50" class="w-full accent-emerald-600 cursor-pointer" oninput="updateParam('initialPrincipal', this.value)">
+                    <div class="flex flex-wrap gap-1.5 pt-1">
+                        <button onclick="setQuickVal('initialPrincipal', 50)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">50萬</button>
+                        <button onclick="setQuickVal('initialPrincipal', 57)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">57萬</button>
+                        <button onclick="setQuickVal('initialPrincipal', 100)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">100萬</button>
+                        <button onclick="setQuickVal('initialPrincipal', 200)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">200萬</button>
+                    </div>
+                </div>
+
+                <!-- 2. 預期平均年化報酬率 Mean -->
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center text-sm font-semibold text-slate-700">
+                        <label for="meanReturn">預期平均年化報酬 Mean (%)</label>
+                        <input type="number" id="meanReturnNum" min="10" max="150" value="90" class="w-24 text-right px-2 py-1 border border-slate-300 rounded-md focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-900 font-bold" onchange="updateParam('meanReturn', this.value)">
+                    </div>
+                    <input type="range" id="meanReturn" min="10" max="150" step="0.5" value="90" class="w-full accent-emerald-600 cursor-pointer" oninput="updateParam('meanReturn', this.value)">
+                    <div class="flex flex-wrap gap-1.5 pt-1">
+                        <button onclick="setQuickVal('meanReturn', 61.8)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">61.8%</button>
+                        <button onclick="setQuickVal('meanReturn', 90)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">90%</button>
+                        <button onclick="setQuickVal('meanReturn', 101.8)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">101.8%</button>
+                    </div>
+                </div>
+
+                <!-- 3. 年化報酬率標準差 StdDev -->
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center text-sm font-semibold text-slate-700">
+                        <label for="stdDev" class="flex items-center space-x-1">
+                            <span>報酬率標準差 StdDev (%)</span>
+                            <span class="text-xs font-normal text-slate-400" title="控制市場波動度">(波動風險)</span>
+                        </label>
+                        <input type="number" id="stdDevNum" min="0" max="150" value="80" class="w-24 text-right px-2 py-1 border border-slate-300 rounded-md focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-900 font-bold" onchange="updateParam('stdDev', this.value)">
+                    </div>
+                    <input type="range" id="stdDev" min="0" max="150" step="1" value="80" class="w-full accent-emerald-600 cursor-pointer" oninput="updateParam('stdDev', this.value)">
+                    <div class="flex flex-wrap gap-1.5 pt-1">
+                        <button onclick="setQuickVal('stdDev', 0)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">0% 固定複利</button>
+                        <button onclick="setQuickVal('stdDev', 40)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">40%</button>
+                        <button onclick="setQuickVal('stdDev', 60)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">60%</button>
+                        <button onclick="setQuickVal('stdDev', 80)" class="px-2 py-0.5 text-xs bg-emerald-100 text-emerald-800 font-semibold rounded border border-emerald-300">80% 預設</button>
+                        <button onclick="setQuickVal('stdDev', 100)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">100%</button>
+                    </div>
+                </div>
+
+                <!-- 4. 獲利提領比例 -->
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center text-sm font-semibold text-slate-700">
+                        <label for="withdrawRate">獲利提領比例 (%)</label>
+                        <input type="number" id="withdrawRateNum" min="0" max="80" value="30" class="w-24 text-right px-2 py-1 border border-slate-300 rounded-md focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-900 font-bold" onchange="updateParam('withdrawRate', this.value)">
+                    </div>
+                    <input type="range" id="withdrawRate" min="0" max="80" step="1" value="30" class="w-full accent-emerald-600 cursor-pointer" oninput="updateParam('withdrawRate', this.value)">
+                    <div class="flex flex-wrap gap-1.5 pt-1">
+                        <button onclick="setQuickVal('withdrawRate', 0)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">0%</button>
+                        <button onclick="setQuickVal('withdrawRate', 10)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">10%</button>
+                        <button onclick="setQuickVal('withdrawRate', 20)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">20%</button>
+                        <button onclick="setQuickVal('withdrawRate', 30)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">30%</button>
+                        <button onclick="setQuickVal('withdrawRate', 40)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">40%</button>
+                        <button onclick="setQuickVal('withdrawRate', 50)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">50%</button>
+                    </div>
+                </div>
+
+                <!-- 5. 投資帳戶本金上限 Cap -->
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center text-sm font-semibold text-slate-700">
+                        <div class="flex items-center space-x-2">
+                            <input type="checkbox" id="capEnabled" checked onchange="toggleCapEnabled(this.checked)" class="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500">
+                            <label for="capEnabled" class="cursor-pointer">本金上限 Cap (萬元)</label>
+                        </div>
+                        <input type="number" id="principalCapNum" min="500" max="20000" value="3600" class="w-24 text-right px-2 py-1 border border-slate-300 rounded-md focus:ring-2 focus:ring-emerald-500 focus:outline-none text-slate-900 font-bold" onchange="updateParam('principalCap', this.value)">
+                    </div>
+                    <input type="range" id="principalCap" min="500" max="20000" step="100" value="3600" class="w-full accent-emerald-600 cursor-pointer" oninput="updateParam('principalCap', this.value)">
+                    <div class="flex flex-wrap gap-1.5 pt-1">
+                        <button onclick="setQuickVal('principalCap', 2000)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">2,000萬</button>
+                        <button onclick="setQuickVal('principalCap', 3600)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">3,600萬</button>
+                        <button onclick="setQuickVal('principalCap', 5000)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">5,000萬</button>
+                        <button onclick="setQuickVal('principalCap', 10000)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-emerald-50 text-slate-600 hover:text-emerald-700 rounded transition border">1億元</button>
+                        <button onclick="toggleCapEnabled(false)" class="px-2 py-0.5 text-xs bg-slate-100 hover:bg-amber-50 text-slate-600 hover:text-amber-700 rounded transition border">無上限</button>
+                    </div>
+                </div>
+
+                <!-- 6. 試算年數與目標門檻 -->
+                <div class="space-y-2">
+                    <div class="flex justify-between items-center text-sm font-semibold text-slate-700">
+                        <label for="simYears">試算年數與年薪門檻</label>
+                        <div class="flex items-center space-x-1">
+                            <span class="text-xs text-slate-500">年數:</span>
+                            <input type="number" id="simYearsNum" min="5" max="40" value="20" class="w-14 text-right px-1.5 py-1 border border-slate-300 rounded-md text-slate-900 font-bold" onchange="updateParam('simYears', this.value)">
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 pt-1">
+                        <div>
+                            <span class="text-xs text-slate-500 block mb-1">快捷年數</span>
+                            <div class="flex space-x-1">
+                                <button onclick="setQuickVal('simYears', 10)" class="px-2 py-1 text-xs bg-slate-100 hover:bg-emerald-50 rounded border flex-1 text-center">10年</button>
+                                <button onclick="setQuickVal('simYears', 15)" class="px-2 py-1 text-xs bg-slate-100 hover:bg-emerald-50 rounded border flex-1 text-center">15年</button>
+                                <button onclick="setQuickVal('simYears', 20)" class="px-2 py-1 text-xs bg-emerald-100 text-emerald-800 font-bold rounded border border-emerald-300 flex-1 text-center">20年</button>
+                                <button onclick="setQuickVal('simYears', 30)" class="px-2 py-1 text-xs bg-slate-100 hover:bg-emerald-50 rounded border flex-1 text-center">30年</button>
+                            </div>
+                        </div>
+                        <div>
+                            <span class="text-xs text-slate-500 block mb-1">年薪超越門檻 (萬)</span>
+                            <input type="number" id="targetSalary" value="123" class="w-full text-right px-2 py-1 border border-slate-300 rounded-md font-bold text-slate-900 text-sm" onchange="calculateAndRender()">
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+
+        <!-- 2. KPI Summary Cards -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+
+            <!-- Card 1: 幾何年化報酬 CAGR -->
+            <div class="glass-card rounded-2xl p-4 shadow-sm border border-slate-200/80 flex flex-col justify-between">
+                <div class="flex items-center justify-between text-slate-500">
+                    <span class="text-xs font-semibold tracking-wider uppercase">實際幾何年化報酬 (CAGR)</span>
+                    <div class="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                        <i data-lucide="trending-up" class="w-4 h-4"></i>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <div id="kpiCagr" class="text-2xl font-black text-slate-900">0.0%</div>
+                    <div id="kpiArithmeticMean" class="text-xs text-slate-500 mt-1">算術平均: 0.0%</div>
+                </div>
+            </div>
+
+            <!-- Card 2: 期末投資帳戶結餘 -->
+            <div class="glass-card rounded-2xl p-4 shadow-sm border border-slate-200/80 flex flex-col justify-between">
+                <div class="flex items-center justify-between text-slate-500">
+                    <span class="text-xs font-semibold tracking-wider uppercase">期末投資帳戶結餘</span>
+                    <div class="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                        <i data-lucide="wallet" class="w-4 h-4"></i>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <div id="kpiEndBalance" class="text-2xl font-black text-slate-900">0 萬元</div>
+                    <div id="kpiEndBalanceYi" class="text-xs text-blue-600 font-medium mt-1">約 0.00 億元</div>
+                </div>
+            </div>
+
+            <!-- Card 3: 累計落袋提領總額 -->
+            <div class="glass-card rounded-2xl p-4 shadow-sm border border-slate-200/80 flex flex-col justify-between">
+                <div class="flex items-center justify-between text-slate-500">
+                    <span class="text-xs font-semibold tracking-wider uppercase">累計落袋提領總額</span>
+                    <div class="p-2 bg-indigo-50 text-indigo-600 rounded-lg">
+                        <i data-lucide="piggy-bank" class="w-4 h-4"></i>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <div id="kpiTotalWithdrawn" class="text-2xl font-black text-indigo-900">0 萬元</div>
+                    <div id="kpiTotalWithdrawnYi" class="text-xs text-indigo-600 font-medium mt-1">約 0.00 億元</div>
+                </div>
+            </div>
+
+            <!-- Card 4: 最差單年報酬與超越年薪 -->
+            <div class="glass-card rounded-2xl p-4 shadow-sm border border-slate-200/80 flex flex-col justify-between">
+                <div class="flex items-center justify-between text-slate-500">
+                    <span class="text-xs font-semibold tracking-wider uppercase">最差年份 / 突破年薪</span>
+                    <div class="p-2 bg-amber-50 text-amber-600 rounded-lg">
+                        <i data-lucide="award" class="w-4 h-4"></i>
+                    </div>
+                </div>
+                <div class="mt-2">
+                    <div id="kpiWorstYear" class="text-lg font-bold text-rose-600">最慘年: -0.0%</div>
+                    <div id="kpiSalaryYear" class="text-xs text-slate-600 font-medium mt-1">首次超越年薪: 第 -- 年</div>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- 3. Dual Charts Section -->
+        <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            <!-- Chart 1: Asset Growth Line Chart -->
+            <div class="glass-card rounded-2xl p-5 shadow-sm border border-slate-200/80 flex flex-col">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-base">資產與累計提領成長曲線</h3>
+                        <p class="text-xs text-slate-500">觀察本金累積與被動收入提領複利效應</p>
+                    </div>
+                    <div class="flex items-center space-x-1 bg-slate-100 p-1 rounded-lg text-xs">
+                        <button id="scaleLinearBtn" onclick="setChartScale('linear')" class="px-2.5 py-1 rounded font-medium bg-white text-slate-800 shadow-sm">線性</button>
+                        <button id="scaleLogBtn" onclick="setChartScale('logarithmic')" class="px-2.5 py-1 rounded font-medium text-slate-500 hover:text-slate-800">對數 Log</button>
+                    </div>
+                </div>
+                <div class="relative flex-1 min-h-[300px]">
+                    <canvas id="growthChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Chart 2: Annual Returns Distribution Bar Chart -->
+            <div class="glass-card rounded-2xl p-5 shadow-sm border border-slate-200/80 flex flex-col">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-base">每年隨機抽樣年化報酬率 (%)</h3>
+                        <p class="text-xs text-slate-500">綠色為正報酬獲利年，紅色為虧損年 (單年下限 -95%)</p>
+                    </div>
+                    <div class="flex items-center space-x-2 text-xs">
+                        <span class="flex items-center space-x-1">
+                            <span class="w-3 h-3 bg-emerald-500 rounded-sm inline-block"></span>
+                            <span>正報酬</span>
+                        </span>
+                        <span class="flex items-center space-x-1">
+                            <span class="w-3 h-3 bg-rose-500 rounded-sm inline-block"></span>
+                            <span>虧損年</span>
+                        </span>
+                    </div>
+                </div>
+                <div class="relative flex-1 min-h-[300px]">
+                    <canvas id="returnDistributionChart"></canvas>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- 4. Detailed Year-by-Year Simulation Table -->
+        <section class="glass-card rounded-2xl p-5 shadow-sm border border-slate-200/80">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-4 mb-4 gap-3">
+                <div>
+                    <h3 class="font-bold text-slate-800 text-lg flex items-center space-x-2">
+                        <i data-lucide="table" class="w-5 h-5 text-emerald-600"></i>
+                        <span>逐年財務模擬詳細數據表</span>
+                    </h3>
+                    <p class="text-xs text-slate-500">虧損年份不提領 cash out，虧損直接由期初本金承受；獲利年超過本金上限部分 100% 溢出提領</p>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                    <button onclick="copyTableData()" class="flex items-center space-x-1 text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-2 rounded-lg font-medium transition">
+                        <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                        <span>複製數據</span>
+                    </button>
+                    <button onclick="exportCSV()" class="flex items-center space-x-1 text-xs bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-3 py-2 rounded-lg font-semibold transition">
+                        <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                        <span>匯出 CSV</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
+                <table class="w-full text-left text-xs sm:text-sm">
+                    <thead class="bg-slate-800 text-slate-200 uppercase font-semibold text-xs">
+                        <tr>
+                            <th class="py-3 px-3 text-center">年度</th>
+                            <th class="py-3 px-3 text-right">期初本金 (萬)</th>
+                            <th class="py-3 px-3 text-right">當年隨機報酬</th>
+                            <th class="py-3 px-3 text-right">當年損益 (萬)</th>
+                            <th class="py-3 px-3 text-right bg-indigo-900/40 text-indigo-200">當年實際提領 (萬)</th>
+                            <th class="py-3 px-3 text-right">留存滾入金額 (萬)</th>
+                            <th class="py-3 px-3 text-right bg-emerald-900/40 text-emerald-200">年底投資結餘 (萬)</th>
+                            <th class="py-3 px-3 text-right">累計已提領 (萬)</th>
+                            <th class="py-3 px-3 text-center">狀態標記</th>
+                        </tr>
+                    </thead>
+                    <tbody id="simulationTableBody" class="divide-y divide-slate-200 bg-white">
+                        <!-- Dynamic Rows injected via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Toast Notification Container -->
+    <div id="toast" class="fixed bottom-5 right-5 transform translate-y-20 opacity-0 transition-all duration-300 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-2 z-50 text-sm">
+        <i data-lucide="check-circle" class="w-5 h-5 text-emerald-400"></i>
+        <span id="toastMsg">提示訊息</span>
+    </div>
+
+    <!-- Application Logic -->
+    <script>
+        // Global State
+        let currentMode = 'monteCarlo'; // 'monteCarlo' or 'fixed'
+        let chartScaleType = 'linear'; // 'linear' or 'logarithmic'
+        let annualReturnsSequence = []; // Stores the current set of random return rates (%) for N years
+
+        // Chart Instances
+        let growthChartInstance = null;
+        let returnChartInstance = null;
+
+        // Initialize App on DOM Load
+        window.onload = function() {
+            lucide.createIcons();
+            generateNewReturnSequence();
+            calculateAndRender();
+        };
+
+        // Box-Muller Transformation for Gaussian Standard Normal Distribution Z ~ N(0, 1)
+        function generateRandomNormal(meanPct, stdDevPct) {
+            let u1 = Math.random();
+            let u2 = Math.random();
+            while (u1 === 0) u1 = Math.random(); // Avoid log(0)
+            while (u2 === 0) u2 = Math.random();
+            
+            let z0 = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
+            let returnRate = (meanPct / 100) + (stdDevPct / 100) * z0;
+            
+            // Single year loss cap lower limit -95% (avoid negative principal math collapse)
+            return Math.max(-0.95, returnRate) * 100;
+        }
+
+        // Generate or Regenerate Returns Sequence
+        function generateNewReturnSequence() {
+            const years = parseInt(document.getElementById('simYearsNum').value) || 20;
+            const mean = parseFloat(document.getElementById('meanReturnNum').value) || 90;
+            const stdDev = parseFloat(document.getElementById('stdDevNum').value) || 80;
+
+            annualReturnsSequence = [];
+            for (let i = 0; i < years; i++) {
+                if (currentMode === 'fixed') {
+                    annualReturnsSequence.push(mean);
+                } else {
+                    annualReturnsSequence.push(generateRandomNormal(mean, stdDev));
+                }
+            }
+        }
+
+        // Resimulate Button Handler
+        function resimulate() {
+            generateNewReturnSequence();
+            calculateAndRender();
+            showToast('🎲 成功重新抽取隨機年報酬率序列！');
+        }
+
+        // Switch Monte Carlo vs Fixed Mode
+        function setMode(mode) {
+            currentMode = mode;
+            const mcBtn = document.getElementById('modeMonteCarloBtn');
+            const fxBtn = document.getElementById('modeFixedBtn');
+            const banner = document.getElementById('modeBanner');
+
+            if (mode === 'monteCarlo') {
+                mcBtn.className = "px-3 py-1.5 rounded-md font-medium transition-all bg-emerald-500 text-white shadow";
+                fxBtn.className = "px-3 py-1.5 rounded-md font-medium transition-all text-slate-400 hover:text-white";
+                banner.classList.add('hidden');
+            } else {
+                fxBtn.className = "px-3 py-1.5 rounded-md font-medium transition-all bg-emerald-500 text-white shadow";
+                mcBtn.className = "px-3 py-1.5 rounded-md font-medium transition-all text-slate-400 hover:text-white";
+                banner.classList.remove('hidden');
+            }
+
+            generateNewReturnSequence();
+            calculateAndRender();
+        }
+
+        // Sync slider & number inputs
+        function updateParam(id, val) {
+            val = parseFloat(val);
+            if (isNaN(val)) return;
+
+            document.getElementById(id).value = val;
+            const numElem = document.getElementById(id + 'Num');
+            if (numElem) numElem.value = val;
+
+            // If years length changed, sync returns sequence length
+            if (id === 'simYears') {
+                const diff = val - annualReturnsSequence.length;
+                if (diff > 0) {
+                    const mean = parseFloat(document.getElementById('meanReturnNum').value) || 90;
+                    const stdDev = parseFloat(document.getElementById('stdDevNum').value) || 80;
+                    for (let i = 0; i < diff; i++) {
+                        annualReturnsSequence.push(currentMode === 'fixed' ? mean : generateRandomNormal(mean, stdDev));
+                    }
+                } else if (diff < 0) {
+                    annualReturnsSequence = annualReturnsSequence.slice(0, val);
+                }
+            }
+
+            // If mean or stdDev changed in fixed mode or monte carlo mode without full resimulate, update sequence proportionally or regenerate
+            if (id === 'meanReturn' || id === 'stdDev') {
+                if (currentMode === 'fixed') {
+                    generateNewReturnSequence();
+                }
+            }
+
+            calculateAndRender();
+        }
+
+        function setQuickVal(id, val) {
+            updateParam(id, val);
+            if (id === 'stdDev' && val === 0) {
+                showToast('已設定標準差 0% (固定年報酬模式)');
+            }
+        }
+
+        function toggleCapEnabled(enabled) {
+            document.getElementById('capEnabled').checked = enabled;
+            const capInput = document.getElementById('principalCap');
+            const capNum = document.getElementById('principalCapNum');
+            if (enabled) {
+                capInput.disabled = false;
+                capNum.disabled = false;
+                capInput.classList.remove('opacity-40');
+            } else {
+                capInput.disabled = true;
+                capNum.disabled = true;
+                capInput.classList.add('opacity-40');
+            }
+            calculateAndRender();
+        }
+
+        function setChartScale(scale) {
+            chartScaleType = scale;
+            const linBtn = document.getElementById('scaleLinearBtn');
+            const logBtn = document.getElementById('scaleLogBtn');
+
+            if (scale === 'linear') {
+                linBtn.className = "px-2.5 py-1 rounded font-medium bg-white text-slate-800 shadow-sm";
+                logBtn.className = "px-2.5 py-1 rounded font-medium text-slate-500 hover:text-slate-800";
+            } else {
+                logBtn.className = "px-2.5 py-1 rounded font-medium bg-white text-slate-800 shadow-sm";
+                linBtn.className = "px-2.5 py-1 rounded font-medium text-slate-500 hover:text-slate-800";
+            }
+            renderGrowthChart(window.lastCalculationResult);
+        }
+
+        // Core Calculation Engine
+        function calculateSimulation() {
+            const initialPrincipal = parseFloat(document.getElementById('initialPrincipalNum').value) || 50;
+            const withdrawRatePct = parseFloat(document.getElementById('withdrawRateNum').value) || 30;
+            const capEnabled = document.getElementById('capEnabled').checked;
+            const principalCap = capEnabled ? (parseFloat(document.getElementById('principalCapNum').value) || 3600) : Infinity;
+            const targetSalary = parseFloat(document.getElementById('targetSalary').value) || 123;
+            const simYears = parseInt(document.getElementById('simYearsNum').value) || 20;
+
+            const withdrawRate = withdrawRatePct / 100;
+            let currentPrincipal = initialPrincipal;
+            let cumulativeWithdraw = 0;
+
+            const tableRows = [];
+            let worstReturn = Infinity;
+            let firstYearSalarySurpassed = null;
+
+            for (let year = 1; year <= simYears; year++) {
+                const startBalance = currentPrincipal;
+                const rPct = annualReturnsSequence[year - 1] !== undefined ? annualReturnsSequence[year - 1] : parseFloat(document.getElementById('meanReturnNum').value);
+                const r = rPct / 100;
+
+                if (rPct < worstReturn) worstReturn = rPct;
+
+                let profitOrLoss = startBalance * r;
+                let actualWithdraw = 0;
+                let retainedProfit = 0;
+                let endBalance = 0;
+                let statusTags = [];
+
+                if (r > 0) {
+                    // Positive Return Year
+                    let regularWithdraw = profitOrLoss * withdrawRate;
+                    retainedProfit = profitOrLoss - regularWithdraw;
+                    let potentialEndBalance = startBalance + retainedProfit;
+
+                    if (capEnabled && potentialEndBalance > principalCap) {
+                        // Cap reached, overflow 100% to withdrawal
+                        let overflow = potentialEndBalance - principalCap;
+                        actualWithdraw = regularWithdraw + overflow;
+                        endBalance = principalCap;
+                        statusTags.push('達上限・溢出提領');
+                    } else {
+                        actualWithdraw = regularWithdraw;
+                        endBalance = potentialEndBalance;
+                    }
+                } else {
+                    // Loss Year
+                    actualWithdraw = 0; // No withdrawal during loss year
+                    retainedProfit = profitOrLoss; // Negative
+                    endBalance = Math.max(0, startBalance + profitOrLoss);
+                    statusTags.push('逆風虧損年');
+                }
+
+                cumulativeWithdraw += actualWithdraw;
+                currentPrincipal = endBalance;
+
+                if (actualWithdraw >= targetSalary && firstYearSalarySurpassed === null) {
+                    firstYearSalarySurpassed = year;
+                    statusTags.push('超越年薪');
+                }
+
+                tableRows.push({
+                    year,
+                    startBalance,
+                    returnPct: rPct,
+                    profitOrLoss,
+                    actualWithdraw,
+                    retainedProfit,
+                    endBalance,
+                    cumulativeWithdraw,
+                    statusTags
+                });
+            }
+
+            // Calculate CAGR (Geometric Mean of Portfolio + Total Value Gain)
+            const finalTotalNetWorth = currentPrincipal + cumulativeWithdraw;
+            const totalReturnRatio = finalTotalNetWorth / initialPrincipal;
+            const cagr = (Math.pow(totalReturnRatio, 1 / simYears) - 1) * 100;
+
+            // Arithmetic Mean
+            const arithMean = annualReturnsSequence.reduce((a, b) => a + b, 0) / annualReturnsSequence.length;
+
+            return {
+                initialPrincipal,
+                simYears,
+                tableRows,
+                finalBalance: currentPrincipal,
+                totalWithdraw: cumulativeWithdraw,
+                cagr,
+                arithMean,
+                worstReturn,
+                firstYearSalarySurpassed
+            };
+        }
+
+        // Render UI & Charts
+        function calculateAndRender() {
+            const res = calculateSimulation();
+            window.lastCalculationResult = res;
+
+            // Update Cards
+            document.getElementById('kpiCagr').innerText = `${res.cagr.toFixed(1)}%`;
+            document.getElementById('kpiArithmeticMean').innerText = `算術平均: ${res.arithMean.toFixed(1)}%`;
+
+            document.getElementById('kpiEndBalance').innerText = `${formatNumber(res.finalBalance, 1)} 萬元`;
+            document.getElementById('kpiEndBalanceYi').innerText = res.finalBalance >= 10000 
+                ? `約 ${(res.finalBalance / 10000).toFixed(2)} 億元` 
+                : `${(res.finalBalance).toFixed(1)} 萬元`;
+
+            document.getElementById('kpiTotalWithdrawn').innerText = `${formatNumber(res.totalWithdraw, 1)} 萬元`;
+            document.getElementById('kpiTotalWithdrawnYi').innerText = res.totalWithdraw >= 10000 
+                ? `約 ${(res.totalWithdraw / 10000).toFixed(2)} 億元` 
+                : `${(res.totalWithdraw).toFixed(1)} 萬元`;
+
+            document.getElementById('kpiWorstYear').innerText = `最慘年: ${res.worstReturn.toFixed(1)}%`;
+            document.getElementById('kpiSalaryYear').innerText = res.firstYearSalarySurpassed 
+                ? `首次超越年薪: 第 ${res.firstYearSalarySurpassed} 年 🎉` 
+                : `首次超越年薪: 未突破`;
+
+            // Render Table
+            renderTable(res.tableRows);
+
+            // Render Charts
+            renderGrowthChart(res);
+            renderReturnDistributionChart(res);
+        }
+
+        // Render Data Table
+        function renderTable(rows) {
+            const tbody = document.getElementById('simulationTableBody');
+            tbody.innerHTML = '';
+
+            rows.forEach(r => {
+                const tr = document.createElement('tr');
+                tr.className = r.returnPct < 0 ? 'bg-rose-50/40 hover:bg-rose-50/80 transition' : 'hover:bg-slate-50 transition';
+
+                const isLoss = r.returnPct < 0;
+                const returnBadge = isLoss 
+                    ? `<span class="inline-block font-bold text-rose-600 bg-rose-100 px-2 py-0.5 rounded">${r.returnPct.toFixed(1)}%</span>`
+                    : `<span class="inline-block font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">+${r.returnPct.toFixed(1)}%</span>`;
+
+                let tagsHtml = r.statusTags.map(tag => {
+                    if (tag === '超越年薪') return `<span class="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded font-semibold text-[11px] border border-amber-300">🎉 ${tag}</span>`;
+                    if (tag === '達上限・溢出提領') return `<span class="px-1.5 py-0.5 bg-blue-100 text-blue-800 rounded font-semibold text-[11px] border border-blue-300">⚡ ${tag}</span>`;
+                    if (tag === '逆風虧損年') return `<span class="px-1.5 py-0.5 bg-rose-100 text-rose-800 rounded font-semibold text-[11px]">🔻 ${tag}</span>`;
+                    return `<span class="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded text-[11px]">${tag}</span>`;
+                }).join(' ');
+
+                tr.innerHTML = `
+                    <td class="py-2.5 px-3 text-center font-bold text-slate-700">第 ${r.year} 年</td>
+                    <td class="py-2.5 px-3 text-right font-medium text-slate-600">${formatNumber(r.startBalance, 1)}</td>
+                    <td class="py-2.5 px-3 text-right">${returnBadge}</td>
+                    <td class="py-2.5 px-3 text-right font-medium ${r.profitOrLoss >= 0 ? 'text-emerald-700' : 'text-rose-600'}">${r.profitOrLoss >= 0 ? '+' : ''}${formatNumber(r.profitOrLoss, 1)}</td>
+                    <td class="py-2.5 px-3 text-right font-bold text-indigo-700 bg-indigo-50/50">${formatNumber(r.actualWithdraw, 1)}</td>
+                    <td class="py-2.5 px-3 text-right font-medium text-slate-600">${formatNumber(r.retainedProfit, 1)}</td>
+                    <td class="py-2.5 px-3 text-right font-bold text-emerald-800 bg-emerald-50/40">${formatNumber(r.endBalance, 1)}</td>
+                    <td class="py-2.5 px-3 text-right font-semibold text-slate-700">${formatNumber(r.cumulativeWithdraw, 1)}</td>
+                    <td class="py-2.5 px-3 text-center space-x-1">${tagsHtml || '<span class="text-slate-300">-</span>'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // Render Chart 1: Growth Line Chart
+        function renderGrowthChart(res) {
+            const ctx = document.getElementById('growthChart').getContext('2d');
+            const labels = res.tableRows.map(r => `第 ${r.year} 年`);
+            const endBalances = res.tableRows.map(r => r.endBalance);
+            const cumulativeWithdraws = res.tableRows.map(r => r.cumulativeWithdraw);
+
+            if (growthChartInstance) {
+                growthChartInstance.destroy();
+            }
+
+            growthChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '投資帳戶結餘 (萬元)',
+                            data: endBalances,
+                            borderColor: '#10b981',
+                            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                            fill: true,
+                            tension: 0.3,
+                            borderWidth: 3,
+                            pointRadius: 3
+                        },
+                        {
+                            label: '累計落袋提領總額 (萬元)',
+                            data: cumulativeWithdraws,
+                            borderColor: '#6366f1',
+                            backgroundColor: 'rgba(99, 102, 241, 0.05)',
+                            fill: true,
+                            tension: 0.3,
+                            borderWidth: 2,
+                            borderDash: [4, 4],
+                            pointRadius: 2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    scales: {
+                        y: {
+                            type: chartScaleType,
+                            ticks: {
+                                callback: function(value) {
+                                    return value >= 10000 ? (value / 10000).toFixed(1) + '億' : value + '萬';
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(226, 232, 240, 0.6)'
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let val = context.raw;
+                                    let yi = val >= 10000 ? ` (約 ${(val / 10000).toFixed(2)} 億)` : '';
+                                    return `${context.dataset.label}: ${formatNumber(val, 1)} 萬元${yi}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Render Chart 2: Annual Returns Distribution Bar Chart
+        function renderReturnDistributionChart(res) {
+            const ctx = document.getElementById('returnDistributionChart').getContext('2d');
+            const labels = res.tableRows.map(r => `第 ${r.year} 年`);
+            const returnsData = res.tableRows.map(r => r.returnPct);
+            const meanVal = parseFloat(document.getElementById('meanReturnNum').value) || 90;
+
+            const barColors = returnsData.map(r => r >= 0 ? 'rgba(16, 185, 129, 0.85)' : 'rgba(244, 63, 94, 0.85)');
+            const borderColors = returnsData.map(r => r >= 0 ? '#059669' : '#e11d48');
+
+            if (returnChartInstance) {
+                returnChartInstance.destroy();
+            }
+
+            returnChartInstance = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: '當年實際年化報酬率 (%)',
+                            data: returnsData,
+                            backgroundColor: barColors,
+                            borderColor: borderColors,
+                            borderWidth: 1,
+                            borderRadius: 4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            ticks: {
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            },
+                            grid: {
+                                color: function(context) {
+                                    if (context.tick.value === 0) return '#475569';
+                                    return 'rgba(226, 232, 240, 0.6)';
+                                },
+                                lineWidth: function(context) {
+                                    if (context.tick.value === 0) return 2;
+                                    return 1;
+                                }
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            }
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `當年報酬率: ${context.raw.toFixed(1)}%`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Utilities
+        function formatNumber(num, decimals = 1) {
+            if (num === null || num === undefined) return '0';
+            return num.toLocaleString('zh-TW', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toastMsg');
+            toastMsg.innerText = msg;
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            toast.classList.add('translate-y-0', 'opacity-100');
+            setTimeout(() => {
+                toast.classList.remove('translate-y-0', 'opacity-100');
+                toast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+        }
+
+        // Copy Table Data
+        function copyTableData() {
+            const res = window.lastCalculationResult;
+            if (!res) return;
+
+            let text = "年度\t期初本金(萬)\t當年隨機報酬(%)\t當年損益(萬)\t當年實際提領(萬)\t留存滾入(萬)\t年底投資結餘(萬)\t累計已提領(萬)\t狀態\n";
+            res.tableRows.forEach(r => {
+                text += `第${r.year}年\t${r.startBalance.toFixed(1)}\t${r.returnPct.toFixed(1)}%\t${r.profitOrLoss.toFixed(1)}\t${r.actualWithdraw.toFixed(1)}\t${r.retainedProfit.toFixed(1)}\t${r.endBalance.toFixed(1)}\t${r.cumulativeWithdraw.toFixed(1)}\t${r.statusTags.join(',')}\n`;
+            });
+
+            // Use execCommand for iframe compatibility
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+
+            showToast('📋 表格數據已成功複製至剪貼簿！');
+        }
+
+        // Export CSV (UTF-8 BOM)
+        function exportCSV() {
+            const res = window.lastCalculationResult;
+            if (!res) return;
+
+            let csvContent = "\uFEFF"; // UTF-8 BOM
+            csvContent += "年度,期初本金(萬元),當年隨機報酬率(%),當年損益(萬元),當年實際提領(萬元),留存滾入金額(萬元),年底投資結餘(萬元),累計已提領總額(萬元),狀態標記\n";
+
+            res.tableRows.forEach(r => {
+                csvContent += `第${r.year}年,${r.startBalance.toFixed(2)},${r.returnPct.toFixed(2)}%,${r.profitOrLoss.toFixed(2)},${r.actualWithdraw.toFixed(2)},${r.retainedProfit.toFixed(2)},${r.endBalance.toFixed(2)},${r.cumulativeWithdraw.toFixed(2)},"${r.statusTags.join(' ')}"\n`;
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `20年複利獲利提領模擬表_stdDev${document.getElementById('stdDevNum').value}%.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            showToast('📥 CSV 檔案已成功下載！');
+        }
+    </script>
+</body>
+</html>
